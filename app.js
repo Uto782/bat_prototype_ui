@@ -4,7 +4,8 @@ const BLE = {
   name: 'XIAO-MOTOR',
   namePrefix: 'XIAO',
   serviceUUID: '19B10000-E8F2-537E-4F6C-D104768A1214',
-  commandCharUUID: '19B10001-E8F2-537E-4F6C-D104768A1214'
+  commandCharUUID: '19B10001-E8F2-537E-4F6C-D104768A1214',
+  tapCharUUID: '19B10002-E8F2-537E-4F6C-D104768A1214'
 }
 
 const CMD = { stop: 0, chance: 1, pinch: 2 }
@@ -19,8 +20,10 @@ const state = {
   device: null,
   server: null,
   commandChar: null,
+  tapChar: null,
   connected: false,
   tapCount: 0,
+  lastDeviceTapCount: 0,
   logs: [],
   debug: false,
   matchLabel: ''
@@ -140,13 +143,13 @@ function addLog(type){
   state.logs.push({ t: nowMs(), type })
   if(state.logs.length > 5000) state.logs.shift()
   saveLogs()
-  syncDerived()
+  syncDerivedFromLogsOnly()
 }
 
 function clearLogs(){
   state.logs = []
   saveLogs()
-  syncDerived()
+  syncDerivedFromLogsOnly()
   toast('ログをけした')
 }
 
@@ -179,7 +182,7 @@ function setMatchLabel(v){
   syncMatchLabel()
 }
 
-function syncDerived(){
+function syncDerivedFromLogsOnly(){
   const taps = state.logs.filter((x) => x.type === 'tap').length
   state.tapCount = taps
   updateLive()
@@ -223,6 +226,41 @@ function bleSupportHint(){
   return 'つなぐ をおして、XIAO-MOTOR をえらびます。'
 }
 
+function readU32LE(dataView){
+  const b0 = dataView.getUint8(0)
+  const b1 = dataView.getUint8(1)
+  const b2 = dataView.getUint8(2)
+  const b3 = dataView.getUint8(3)
+  return (b0) + (b1 << 8) + (b2 << 16) + ((b3 << 24) >>> 0)
+}
+
+function onTapNotify(e){
+  const v = e.target.value
+  if(!v || v.byteLength < 4) return
+
+  const newCount = readU32LE(v)
+  const prev = state.lastDeviceTapCount
+  state.lastDeviceTapCount = newCount
+
+  if(newCount < prev){
+    state.lastDeviceTapCount = newCount
+    toast('カウントがリセットされた')
+    return
+  }
+
+  const delta = newCount - prev
+  if(delta <= 0) return
+
+  const t = nowMs()
+  for(let i = 0; i < delta; i++){
+    state.logs.push({ t: t + i, type: 'tap' })
+  }
+  if(state.logs.length > 5000) state.logs = state.logs.slice(state.logs.length - 5000)
+
+  saveLogs()
+  syncDerivedFromLogsOnly()
+}
+
 async function connectBLE(){
   if(!('bluetooth' in navigator)){
     toast('Bluetoothにたいおうしていない')
@@ -251,7 +289,16 @@ async function connectBLE(){
 
     state.server = await device.gatt.connect()
     const service = await state.server.getPrimaryService(BLE.serviceUUID)
+
     state.commandChar = await service.getCharacteristic(BLE.commandCharUUID)
+
+    try{
+      state.tapChar = await service.getCharacteristic(BLE.tapCharUUID)
+      await state.tapChar.startNotifications()
+      state.tapChar.addEventListener('characteristicvaluechanged', onTapNotify)
+    }catch(eTap){
+      state.tapChar = null
+    }
 
     setConnected(true)
     toast('つながった')
@@ -264,6 +311,16 @@ async function connectBLE(){
 }
 
 function onDisconnected(){
+  try{
+    if(state.tapChar){
+      state.tapChar.removeEventListener('characteristicvaluechanged', onTapNotify)
+    }
+  }catch(e){}
+
+  state.tapChar = null
+  state.commandChar = null
+  state.server = null
+
   setConnected(false)
   toast('きれた')
 }
@@ -432,9 +489,10 @@ function init(){
   syncMatchLabel()
 
   setConnected(false)
-  syncDerived()
+  syncDerivedFromLogsOnly()
 
   el('batTap').addEventListener('click', () => showScreen('live'))
+
   el('tapCircle').addEventListener('click', () => addLog('tap'))
   el('goHistoryBtn').addEventListener('click', () => showScreen('history'))
   el('toHistoryFromLive').addEventListener('click', () => showScreen('history'))
@@ -455,9 +513,6 @@ function init(){
   el('sendChanceBtn').addEventListener('click', () => sendCommand(CMD.chance))
   el('sendPinchBtn').addEventListener('click', () => sendCommand(CMD.pinch))
   el('stopBtn').addEventListener('click', () => sendCommand(CMD.stop))
-
-  // main interaction: tap the circle to log a "tap"
-  el('tapCircle').addEventListener('click', () => addLog('tap'))
 
   el('incTap').addEventListener('click', () => addLog('tap'))
   el('resetSession').addEventListener('click', () => {
