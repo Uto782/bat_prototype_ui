@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#00C7AC" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <title>わたしのバット</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <div class="app" id="appRoot">
+    <header class="topbar">
+      <div class="left">
+        <button class="iconbtn" id="backBtn" aria-label="back" style="visibility:hidden;">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M14.5 5L7.5 12L14.5 19" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+      </div>
+      <div class="title" id="topTitle">わたしのバット</div>
+      <div class="right">
+        <button class="iconbtn" id="settingsBtn" aria-label="settings">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M19.4 13.6a7.9 7.9 0 0 0 0-3.2l2-1.6-2-3.4-2.5 1a8.3 8.3 0 0 0-2.8-1.6l-.4-2.7H10l-.4 2.7c-1 .4-2 .9-2.8 1.6l-2.5-1-2 3.4 2 1.6a7.9 7.9 0 0 0 0 3.2l-2 1.6 2 3.4 2.5-1c.9.7 1.8 1.2 2.8 1.6l.4 2.7h4l.4-2.7c1-.4 2-.9 2.8-1.6l2.5 1 2-3.4-2-1.6Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section id="screen-home" class="screen active" aria-label="setup">
+        <div class="card">
+          <div class="headerRow">
+            <h2 class="h1" id="batTitle">パパのバット</h2>
+            <div class="badge off" id="connBadge" aria-live="polite">
+              <span class="dot" aria-hidden="true"></span>
+              <span id="connText">つながっていない</span>
+            </div>
+          </div>
+
+          <div class="circleWrap">
+            <button class="batPreview" id="batTap" type="button" aria-label="リアルタイムへ">
+              <img class="batImg" src="./assets/bat.svg" alt="" aria-hidden="true" onerror="this.style.display='none'; document.getElementById('batFallback').style.display='grid';" />
+              <div class="bat" id="batFallback" aria-hidden="true" style="display:none;">bat</div>
+            </button>
+          </div>
+
+          <div class="btnRow">
+            <button class="pillBtn primary" id="connectBtn" type="button">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M8.5 10.2a3.3 3.3 0 0 1 4.7 0l.6.6 2-2a2.2 2.2 0 0 1 3.1 3.1l-2 2 .6.6a3.3 3.3 0 0 1 0 4.7l-.4.4a3.3 3.3 0 0 1-4.7 0L4.8 13a3.3 3.3 0 0 1 0-4.7l.4-.4a3.3 3.3 0 0 1 3.3-.9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span id="connectBtnText">つなぐ</span>
+            </button>
+
+            <button class="pillBtn" id="goHistoryBtn" type="button">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M7 16V9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M12 16V5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M17 16v-7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <span>かくにんする</span>
+            </button>
+          </div>
+
+          <div class="debug" id="debugBlock" hidden>
+            <div class="debugTitle">デバッグ</div>
+            <div class="debugRow">
+              <button class="debugBtn" id="sendChanceBtn" type="button">チャンス</button>
+              <button class="debugBtn" id="sendPinchBtn" type="button">ピンチ</button>
+              <button class="debugBtn" id="stopBtn" type="button">停止</button>
+            </div>
+          </div>
+        </div>
+
+        
+      </section>
+
+      <section id="screen-live" class="screen" aria-label="live">
+        <div class="card">
+          <div class="headerRow">
+            <h2 class="h1" id="batTitle2">パパのバット</h2>
+            <div class="badge" id="connBadge2" aria-live="polite">
+              <span class="dot" aria-hidden="true"></span>
+              <span id="connText2">つながっている</span>
+            </div>
+          </div>
+
+          <div class="circleWrap">
+            <button class="circle" id="tapCircle" type="button" aria-label="たたく">
+              <div class="small">いま、たたいたかず</div>
+              <div class="bigrow">
+                <div class="big" id="liveCount">0</div>
+                <div class="unit">かい</div>
+              </div>
+            </button>
+          </div>
+
+          <div class="btnRow">
+            <button class="pillBtn primary" id="reconnectBtn" type="button">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M21 12a9 9 0 1 1-3-6.7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+                  <path d="M21 4v6h-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span>つなぎなおす</span>
+            </button>
+
+            <button class="pillBtn" id="toHistoryFromLive" type="button">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M7 16V9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M12 16V5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M17 16v-7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <span>かくにんする</span>
+            </button>
+          </div>
+
+          <div class="debug" id="debugLive" hidden>
+            <div class="debugTitle">ログ</div>
+            <div class="debugRow">
+              <button class="debugBtn" id="incTap" type="button">たたく +1</button>
+              <button class="debugBtn" id="resetSession" type="button">この回をリセット</button>
+            </div>
+          </div>
+        </div>
+
+        
+      </section>
+
+      <section id="screen-history" class="screen" aria-label="history">
+        <div class="card">
+          <div class="historyHeader">
+            <div class="date" id="matchLabel">9/5 vs ○○</div>
+          </div>
+
+          <div class="chart">
+            <svg id="chartSvg" viewBox="0 0 360 360" width="100%" height="100%" preserveAspectRatio="none" aria-label="timeline chart"></svg>
+            
+          </div>
+
+          <div class="tinyActions">
+            <button class="miniBtn" id="exportCsv" type="button">CSVを書き出す</button>
+          </div>
+        </div>
+
+        <div class="sectionTitle">たたいたかず</div>
+
+        <div class="card rowCard">
+          <div class="rowLeft">
+            <div class="avatar">bat</div>
+            <div class="name">パパ</div>
+          </div>
+          <div class="count" id="totalTapCount">0<span class="countUnit">回</span></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="nav" aria-label="bottom nav">
+      <button class="navItem" type="button" data-target="home" aria-label="home">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3 11.5 12 4l9 7.5V21a1.6 1.6 0 0 1-1.6 1.6H4.6A1.6 1.6 0 0 1 3 21v-9.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        <div>ホーム</div>
+      </button>
+
+      <button class="navItem" type="button" data-target="history" aria-label="history">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M7 16V9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M12 16V5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M17 16v-7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <div>きろく</div>
+      </button>
+
+      <button class="navFab" id="navFab" type="button" aria-label="open history">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M7 16V9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M12 16V5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M17 16v-7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </button>
+
+      <button class="navItem" type="button" data-target="gacha" aria-label="gacha">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3c4.6 0 8.4 3.8 8.4 8.4 0 4.6-3.8 8.4-8.4 8.4-4.6 0-8.4-3.8-8.4-8.4C3.6 6.8 7.4 3 12 3Z" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 3v8.4l7.3 4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div>ガチャ</div>
+      </button>
+
+      <button class="navItem" type="button" data-target="me" aria-label="me">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 12a4.4 4.4 0 1 0 0-8.8 4.4 4.4 0 0 0 0 8.8Z" stroke="currentColor" stroke-width="2"/>
+          <path d="M4.5 21a7.5 7.5 0 0 1 15 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div>じぶん</div>
+      </button>
+    </nav>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheetBackdrop" id="sheetBackdrop"></div>
+      <div class="sheetPanel" role="dialog" aria-modal="true" aria-label="settings">
+        <div class="sheetHeader">
+          <div class="sheetTitle">せってい</div>
+          <button class="sheetClose" id="sheetClose" type="button" aria-label="close">とじる</button>
+        </div>
+        <div class="sheetBody">
+          <label class="field">
+            <span class="fieldLabel">たいせん</span>
+            <input class="fieldInput" id="matchInput" type="text" inputmode="text" placeholder="例: 1/21 vs ○○" />
+          </label>
+          <div class="sheetRow">
+            <button class="sheetBtn" id="toggleDebug" type="button">デバッグを切りかえ</button>
+            <button class="sheetBtn danger" id="clearLogs" type="button">ログをけす</button>
+          </div>
+          <div class="sheetHint" id="bleHint"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

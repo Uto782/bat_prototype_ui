@@ -1,0 +1,15 @@
+{
+  "name": "わたしのバット",
+  "short_name": "バット",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7f9fb",
+  "theme_color": "#00C7AC",
+  "icons": [
+    {
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABFUlEQVR4nO3bMQ6CMBBA0TnQk7w0k8Qp2QK4wAqzq6w0m7m2mGm7y5zQqkKf7m8F0yGkq9xwAAAAAAAAAA4Kc7GJ3v2XJzjW7d7pQm8n2m0mQ9mQbq1m8m1p6h0x9oQ3p2c1c0qk8zqkzqf4c0d2cZl5cB1b8d8X0lqg6lqkq8g5Q2b0mP3mYx+oQ0l9Q9w0h9w5g9w3c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k9z0c7k8AAAAAAAAAAB4F7x4AqW9gQvJAAAAAElFTkSuQmCC",
+      "sizes": "64x64",
+      "type": "image/png"
+    }
+  ]
+}
