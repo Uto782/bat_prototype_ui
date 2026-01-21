@@ -32,6 +32,9 @@ const state = {
 
 const el = (id) => document.getElementById(id)
 
+let rafId = 0
+let chartRuntime = null
+
 function toast(msg){
   const t = el('toast')
   t.textContent = msg
@@ -68,6 +71,9 @@ function showScreen(name){
     el('backBtn').style.visibility = 'hidden'
     el('topTitle').textContent = name === 'history' ? 'ふりかえり' : 'わたしのバット'
   }
+
+  if(name === 'history') startMarkerLoop()
+  else stopMarkerLoop()
 }
 
 function setConnected(on){
@@ -185,7 +191,9 @@ function setMatchLabel(v){
 }
 
 function setBatteryText(pct){
-  const text = (typeof pct === 'number' && isFinite(pct)) ? ('バッテリー ' + String(Math.max(0, Math.min(100, Math.round(pct)))) + '%') : 'バッテリー --%'
+  const text = (typeof pct === 'number' && isFinite(pct))
+    ? ('バッテリー ' + String(Math.max(0, Math.min(100, Math.round(pct)))) + '%')
+    : 'バッテリー --%'
   const a = el('batteryTextHome')
   const b = el('batteryTextLive')
   if(a) a.textContent = text
@@ -317,7 +325,6 @@ async function connectBLE(){
     await readBatteryOnce(state.server)
 
     const service = await state.server.getPrimaryService(BLE.serviceUUID)
-
     state.commandChar = await service.getCharacteristic(BLE.commandCharUUID)
 
     try{
@@ -379,63 +386,164 @@ function svgEl(name){
   return document.createElementNS('http://www.w3.org/2000/svg', name)
 }
 
-// 横に伸びるスクロールグラフ（1分刻み）
+function getStartTime(){
+  if(state.logs.length === 0) return null
+  let t = state.logs[0].t
+  for(const x of state.logs){
+    if(typeof x.t === 'number' && x.t < t) t = x.t
+  }
+  return t
+}
+
+function startMarkerLoop(){
+  stopMarkerLoop()
+  const tick = () => {
+    updateTimeMarker()
+    rafId = requestAnimationFrame(tick)
+  }
+  rafId = requestAnimationFrame(tick)
+}
+
+function stopMarkerLoop(){
+  if(rafId) cancelAnimationFrame(rafId)
+  rafId = 0
+}
+
+function updateTimeMarker(){
+  if(!chartRuntime) return
+  const c = chartRuntime.marker
+  if(!c) return
+  const startT = chartRuntime.startT
+  if(!startT) return
+
+  const minuteMs = 60000
+  const elapsedMin = Math.max(0, (nowMs() - startT) / minuteMs)
+  const x = chartRuntime.xOfMin(elapsedMin)
+
+  c.setAttribute('cx', x.toFixed(2))
+  c.setAttribute('cy', String(chartRuntime.yBase))
+
+  const meta = el('chartMeta')
+  if(meta){
+    meta.textContent = '開始0分 / いま' + String(Math.floor(elapsedMin)) + '分'
+  }
+
+  const svg = el('chartSvg')
+  if(svg && chartRuntime.chartWrap){
+    const wrap = chartRuntime.chartWrap
+    const rightEdge = x - wrap.clientWidth * 0.6
+    if(rightEdge > wrap.scrollLeft){
+      wrap.scrollLeft = rightEdge
+    }
+  }
+}
+
+// 横に伸びるスクロールグラフ（線は最後の叩打までで止める）
 function drawHistoryChart(){
   const svg = el('chartSvg')
+  const wrap = svg ? svg.parentElement : null
+
   const H = 360
-  const padL = 14
-  const padR = 12
-  const padT = 34
+  const padL = 46
+  const padR = 14
+  const padT = 28
   const padB = 62
+  const yBase = H - padB
 
   while(svg.firstChild) svg.removeChild(svg.firstChild)
 
-  const taps = state.logs.filter((x) => x.type === 'tap')
-  if(taps.length < 2){
+  const startT = getStartTime()
+  chartRuntime = null
+
+  if(!startT){
     const W0 = 360
     svg.setAttribute('width', String(W0))
     svg.setAttribute('height', String(H))
     svg.setAttribute('viewBox', '0 0 ' + String(W0) + ' ' + String(H))
     drawEmptyChart(svg, W0, H, padL, padR, padT, padB)
+    const meta = el('chartMeta')
+    if(meta) meta.textContent = '開始0分 / いま0分'
     return
   }
 
-  const t0 = taps[0].t
-  const t1 = taps[taps.length - 1].t
-  const span = Math.max(1, t1 - t0)
-
+  const nowT = nowMs()
   const minuteMs = 60000
-  let bins = Math.floor(span / minuteMs) + 1
-  if (bins < 2) bins = 2
-  if (bins > 240) bins = 240
+  let binsTime = Math.floor((nowT - startT) / minuteMs) + 1
+  if(binsTime < 2) binsTime = 2
+  if(binsTime > 240) binsTime = 240
 
   const pxPerMin = 26
   const minW = 360
-  const W = Math.max(minW, padL + padR + (bins - 1) * pxPerMin)
+  const W = Math.max(minW, padL + padR + (binsTime - 1) * pxPerMin)
 
   svg.setAttribute('width', String(W))
   svg.setAttribute('height', String(H))
   svg.setAttribute('viewBox', '0 0 ' + String(W) + ' ' + String(H))
 
-  const counts = new Array(bins).fill(0)
+  const taps = state.logs.filter((x) => x.type === 'tap')
+  let lastTapIdx = -1
   for(const ev of taps){
-    const idx = Math.max(0, Math.min(bins - 1, Math.floor((ev.t - t0) / minuteMs)))
-    counts[idx] = counts[idx] + 1
+    const idx = Math.floor((ev.t - startT) / minuteMs)
+    if(idx > lastTapIdx) lastTapIdx = idx
   }
-  const maxC = Math.max(1, ...counts)
+  let binsLine = Math.max(2, lastTapIdx + 1)
+  if(binsLine > binsTime) binsLine = binsTime
 
+  const counts = new Array(binsLine).fill(0)
+  for(const ev of taps){
+    const idx = Math.floor((ev.t - startT) / minuteMs)
+    if(idx >= 0 && idx < binsLine) counts[idx] = counts[idx] + 1
+  }
+
+  const maxC = Math.max(1, ...counts)
   const xOf = (i) => padL + i * pxPerMin
+  const xOfMin = (minF) => {
+    const m = Math.max(0, Math.min(binsTime - 1, minF))
+    return padL + m * pxPerMin
+  }
   const yOf = (c) => {
     const r = c / maxC
     const h = (H - padT - padB)
     return padT + mul((1 - r), h)
   }
 
-  const yBase = H - padB
+  // 縦軸ラベルと目盛り
+  const yTickVals = [0, Math.round(maxC / 2), maxC]
+  for(const v of yTickVals){
+    const yy = yOf(v)
+    const t = svgEl('text')
+    t.setAttribute('x', String(padL - 10))
+    t.setAttribute('y', String(yy + 4))
+    t.setAttribute('text-anchor', 'end')
+    t.setAttribute('font-size', '12')
+    t.setAttribute('font-family', 'system-ui')
+    t.setAttribute('fill', 'rgba(40,46,60,.62)')
+    t.textContent = String(v)
+    svg.appendChild(t)
 
-  const labelEvery = bins <= 12 ? 1 : (bins <= 40 ? 2 : 5)
+    const hline = svgEl('line')
+    hline.setAttribute('x1', String(padL))
+    hline.setAttribute('x2', String(W - padR))
+    hline.setAttribute('y1', String(yy))
+    hline.setAttribute('y2', String(yy))
+    hline.setAttribute('stroke', 'rgba(0,0,0,.05)')
+    hline.setAttribute('stroke-width', '2')
+    svg.appendChild(hline)
+  }
 
-  for(let i = 0; i < bins; i++){
+  const yLabel = svgEl('text')
+  yLabel.setAttribute('x', String(16))
+  yLabel.setAttribute('y', String(padT + 10))
+  yLabel.setAttribute('text-anchor', 'start')
+  yLabel.setAttribute('font-size', '12')
+  yLabel.setAttribute('font-family', 'system-ui')
+  yLabel.setAttribute('fill', 'rgba(40,46,60,.72)')
+  yLabel.textContent = '回'
+  svg.appendChild(yLabel)
+
+  // 1分ごとの縦線とラベル
+  const labelEvery = binsTime <= 12 ? 1 : (binsTime <= 40 ? 2 : 5)
+  for(let i = 0; i < binsTime; i++){
     const x = xOf(i)
 
     const grid = svgEl('line')
@@ -447,11 +555,11 @@ function drawHistoryChart(){
     grid.setAttribute('stroke-width', '2')
     svg.appendChild(grid)
 
-    if(i === 0 || i === bins - 1 || (i % labelEvery === 0)){
+    if(i === 0 || i === binsTime - 1 || (i % labelEvery === 0)){
       const label = svgEl('text')
       label.setAttribute('x', x.toFixed(2))
       label.setAttribute('y', String(H - 18))
-      label.setAttribute('text-anchor', i === 0 ? 'start' : (i === bins - 1 ? 'end' : 'middle'))
+      label.setAttribute('text-anchor', i === 0 ? 'start' : (i === binsTime - 1 ? 'end' : 'middle'))
       label.setAttribute('font-size', '12')
       label.setAttribute('font-family', 'system-ui')
       label.setAttribute('fill', 'rgba(40,46,60,.62)')
@@ -460,15 +568,16 @@ function drawHistoryChart(){
     }
   }
 
+  // 線と面は binsLine まで
   let dLine = ''
-  for(let i = 0; i < bins; i++){
+  for(let i = 0; i < binsLine; i++){
     const x = xOf(i)
     const y = yOf(counts[i])
     dLine += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' '
   }
 
   const x0 = xOf(0)
-  const xN = xOf(bins - 1)
+  const xN = xOf(binsLine - 1)
 
   const area = svgEl('path')
   area.setAttribute('d', dLine + 'L ' + xN.toFixed(2) + ' ' + String(yBase) + ' L ' + x0.toFixed(2) + ' ' + String(yBase) + ' Z')
@@ -492,9 +601,10 @@ function drawHistoryChart(){
   base.setAttribute('stroke-width', '2')
   svg.appendChild(base)
 
+  // chance/pinch マーカー
   const marks = state.logs.filter((x) => (x.type === 'chance' || x.type === 'pinch'))
   for(const m of marks){
-    const ratio = (m.t - t0) / span
+    const ratio = (m.t - startT) / Math.max(1, (nowT - startT))
     const x = padL + mul(clamp01(ratio), (W - padL - padR))
 
     const c = svgEl('circle')
@@ -506,6 +616,32 @@ function drawHistoryChart(){
     c.setAttribute('stroke-width', '2')
     svg.appendChild(c)
   }
+
+  // 動く●（いま）
+  const marker = svgEl('circle')
+  marker.setAttribute('cx', String(xOf(0)))
+  marker.setAttribute('cy', String(yBase))
+  marker.setAttribute('r', '7')
+  marker.setAttribute('fill', 'rgba(40,46,60,.88)')
+  marker.setAttribute('stroke', 'rgba(255,255,255,.9)')
+  marker.setAttribute('stroke-width', '2')
+  svg.appendChild(marker)
+
+  chartRuntime = {
+    startT,
+    yBase,
+    marker,
+    xOfMin,
+    chartWrap: wrap
+  }
+
+  const meta = el('chartMeta')
+  if(meta){
+    const elapsedMin = Math.max(0, (nowT - startT) / minuteMs)
+    meta.textContent = '開始0分 / いま' + String(Math.floor(elapsedMin)) + '分'
+  }
+
+  updateTimeMarker()
 }
 
 function drawEmptyChart(svg, W, H, padL, padR, padT, padB){
@@ -537,6 +673,16 @@ function drawEmptyChart(svg, W, H, padL, padR, padT, padB){
   label.setAttribute('fill', 'rgba(40,46,60,.62)')
   label.textContent = '0分'
   svg.appendChild(label)
+
+  const yLabel = svgEl('text')
+  yLabel.setAttribute('x', String(16))
+  yLabel.setAttribute('y', String(padT + 10))
+  yLabel.setAttribute('text-anchor', 'start')
+  yLabel.setAttribute('font-size', '12')
+  yLabel.setAttribute('font-family', 'system-ui')
+  yLabel.setAttribute('fill', 'rgba(40,46,60,.72)')
+  yLabel.textContent = '回'
+  svg.appendChild(yLabel)
 }
 
 function initNav(){
