@@ -26,7 +26,8 @@ const state = {
   lastDeviceTapCount: 0,
   logs: [],
   debug: false,
-  matchLabel: ''
+  matchLabel: '',
+  battery: null
 }
 
 const el = (id) => document.getElementById(id)
@@ -183,6 +184,14 @@ function setMatchLabel(v){
   syncMatchLabel()
 }
 
+function setBatteryText(pct){
+  const text = (typeof pct === 'number' && isFinite(pct)) ? ('バッテリー ' + String(Math.max(0, Math.min(100, Math.round(pct)))) + '%') : 'バッテリー --%'
+  const a = el('batteryTextHome')
+  const b = el('batteryTextLive')
+  if(a) a.textContent = text
+  if(b) b.textContent = text
+}
+
 function syncDerivedFromLogsOnly(){
   const taps = state.logs.filter((x) => x.type === 'tap').length
   state.tapCount = taps
@@ -254,6 +263,29 @@ function onTapNotify(e){
   syncDerivedFromLogsOnly()
 }
 
+async function readBatteryOnce(server){
+  try{
+    const svc = await server.getPrimaryService('battery_service')
+    const chr = await svc.getCharacteristic('battery_level')
+    const v = await chr.readValue()
+    const pct = v.getUint8(0)
+    state.battery = pct
+    setBatteryText(pct)
+
+    try{
+      await chr.startNotifications()
+      chr.addEventListener('characteristicvaluechanged', (e) => {
+        const vv = e.target.value
+        const pp = vv.getUint8(0)
+        state.battery = pp
+        setBatteryText(pp)
+      })
+    }catch(e2){}
+  }catch(e){
+    setBatteryText(null)
+  }
+}
+
 async function connectBLE(){
   if(!('bluetooth' in navigator)){
     toast('Bluetoothにたいおうしていない')
@@ -268,12 +300,12 @@ async function connectBLE(){
     try{
       device = await navigator.bluetooth.requestDevice({
         filters: [{ name: BLE.name }],
-        optionalServices: [BLE.serviceUUID]
+        optionalServices: [BLE.serviceUUID, 'battery_service']
       })
     }catch(e1){
       device = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: BLE.namePrefix }],
-        optionalServices: [BLE.serviceUUID]
+        optionalServices: [BLE.serviceUUID, 'battery_service']
       })
     }
 
@@ -281,6 +313,9 @@ async function connectBLE(){
     state.device.addEventListener('gattserverdisconnected', onDisconnected)
 
     state.server = await device.gatt.connect()
+
+    await readBatteryOnce(state.server)
+
     const service = await state.server.getPrimaryService(BLE.serviceUUID)
 
     state.commandChar = await service.getCharacteristic(BLE.commandCharUUID)
@@ -315,6 +350,8 @@ function onDisconnected(){
   state.tapChar = null
   state.commandChar = null
   state.server = null
+  state.battery = null
+  setBatteryText(null)
 
   setConnected(false)
   toast('きれた')
@@ -342,10 +379,9 @@ function svgEl(name){
   return document.createElementNS('http://www.w3.org/2000/svg', name)
 }
 
-// 1分刻みの集計＋1分ごとの目盛り
+// 横に伸びるスクロールグラフ（1分刻み）
 function drawHistoryChart(){
   const svg = el('chartSvg')
-  const W = 360
   const H = 360
   const padL = 14
   const padR = 12
@@ -356,7 +392,11 @@ function drawHistoryChart(){
 
   const taps = state.logs.filter((x) => x.type === 'tap')
   if(taps.length < 2){
-    drawEmptyChart(svg, W, H, padL, padR, padT, padB)
+    const W0 = 360
+    svg.setAttribute('width', String(W0))
+    svg.setAttribute('height', String(H))
+    svg.setAttribute('viewBox', '0 0 ' + String(W0) + ' ' + String(H))
+    drawEmptyChart(svg, W0, H, padL, padR, padT, padB)
     return
   }
 
@@ -367,23 +407,24 @@ function drawHistoryChart(){
   const minuteMs = 60000
   let bins = Math.floor(span / minuteMs) + 1
   if (bins < 2) bins = 2
-  if (bins > 120) bins = 120
+  if (bins > 240) bins = 240
+
+  const pxPerMin = 26
+  const minW = 360
+  const W = Math.max(minW, padL + padR + (bins - 1) * pxPerMin)
+
+  svg.setAttribute('width', String(W))
+  svg.setAttribute('height', String(H))
+  svg.setAttribute('viewBox', '0 0 ' + String(W) + ' ' + String(H))
 
   const counts = new Array(bins).fill(0)
-
   for(const ev of taps){
     const idx = Math.max(0, Math.min(bins - 1, Math.floor((ev.t - t0) / minuteMs)))
     counts[idx] = counts[idx] + 1
   }
-
   const maxC = Math.max(1, ...counts)
 
-  const xOf = (i) => {
-    const r = i / (bins - 1)
-    const w = (W - padL - padR)
-    return padL + mul(r, w)
-  }
-
+  const xOf = (i) => padL + i * pxPerMin
   const yOf = (c) => {
     const r = c / maxC
     const h = (H - padT - padB)
@@ -392,9 +433,9 @@ function drawHistoryChart(){
 
   const yBase = H - padB
 
-  // 1分ごとの縦線とラベル
-  const tickEvery = 1
-  for(let i = 0; i < bins; i += tickEvery){
+  const labelEvery = bins <= 12 ? 1 : (bins <= 40 ? 2 : 5)
+
+  for(let i = 0; i < bins; i++){
     const x = xOf(i)
 
     const grid = svgEl('line')
@@ -406,15 +447,15 @@ function drawHistoryChart(){
     grid.setAttribute('stroke-width', '2')
     svg.appendChild(grid)
 
-    const label = svgEl('text')
-    label.setAttribute('x', x.toFixed(2))
-    label.setAttribute('y', String(H - 18))
-    label.setAttribute('text-anchor', i === 0 ? 'start' : (i === bins - 1 ? 'end' : 'middle'))
-    label.setAttribute('font-size', '12')
-    label.setAttribute('font-family', 'system-ui')
-    label.setAttribute('fill', 'rgba(40,46,60,.62)')
-    label.textContent = i === 0 ? '0分' : (String(i) + '分')
-    if (bins <= 12 || i % 2 === 0 || i === bins - 1) {
+    if(i === 0 || i === bins - 1 || (i % labelEvery === 0)){
+      const label = svgEl('text')
+      label.setAttribute('x', x.toFixed(2))
+      label.setAttribute('y', String(H - 18))
+      label.setAttribute('text-anchor', i === 0 ? 'start' : (i === bins - 1 ? 'end' : 'middle'))
+      label.setAttribute('font-size', '12')
+      label.setAttribute('font-family', 'system-ui')
+      label.setAttribute('fill', 'rgba(40,46,60,.62)')
+      label.textContent = String(i) + '分'
       svg.appendChild(label)
     }
   }
@@ -451,7 +492,6 @@ function drawHistoryChart(){
   base.setAttribute('stroke-width', '2')
   svg.appendChild(base)
 
-  // chance/pinch のマーカーは引き続き上に出す
   const marks = state.logs.filter((x) => (x.type === 'chance' || x.type === 'pinch'))
   for(const m of marks){
     const ratio = (m.t - t0) / span
@@ -515,6 +555,7 @@ function init(){
   loadPersist()
 
   el('bleHint').textContent = bleSupportHint()
+  setBatteryText(null)
 
   syncDebug()
   syncMatchLabel()
