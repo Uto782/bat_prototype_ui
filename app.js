@@ -243,7 +243,6 @@ function onTapNotify(e){
   state.lastDeviceTapCount = newCount
 
   if(newCount < prev){
-    state.lastDeviceTapCount = newCount
     toast('カウントがリセットされた')
     return
   }
@@ -252,9 +251,12 @@ function onTapNotify(e){
   if(delta <= 0) return
 
   const t = nowMs()
+
+  // ここが改善点：同時刻に固まらないように少しずつ時刻をずらす
   for(let i = 0; i < delta; i++){
-    state.logs.push({ t: t + i, type: 'tap' })
+    state.logs.push({ t: t + i * 20, type: 'tap' })
   }
+
   if(state.logs.length > 5000) state.logs = state.logs.slice(state.logs.length - 5000)
 
   saveLogs()
@@ -296,8 +298,10 @@ async function connectBLE(){
       state.tapChar = await service.getCharacteristic(BLE.tapCharUUID)
       await state.tapChar.startNotifications()
       state.tapChar.addEventListener('characteristicvaluechanged', onTapNotify)
+      if(state.debug) toast('tap通知OK')
     }catch(eTap){
       state.tapChar = null
+      if(state.debug) toast('tap通知NG')
     }
 
     setConnected(true)
