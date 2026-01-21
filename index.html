@@ -38,9 +38,12 @@
         <div class="card">
           <div class="headerRow">
             <h2 class="h1" id="batTitle">パパのバット</h2>
-            <div class="badge off" id="connBadge" aria-live="polite">
-              <span class="dot" aria-hidden="true"></span>
-              <span id="connText">つながっていない</span>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <div style="font-weight:800; font-size:12px; color:#282E3C; opacity:.7;" id="batteryTextHome">バッテリー --%</div>
+              <div class="badge off" id="connBadge" aria-live="polite">
+                <span class="dot" aria-hidden="true"></span>
+                <span id="connText">つながっていない</span>
+              </div>
             </div>
           </div>
 
@@ -89,9 +92,12 @@
         <div class="card">
           <div class="headerRow">
             <h2 class="h1" id="batTitle2">パパのバット</h2>
-            <div class="badge" id="connBadge2" aria-live="polite">
-              <span class="dot" aria-hidden="true"></span>
-              <span id="connText2">つながっている</span>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <div style="font-weight:800; font-size:12px; color:#282E3C; opacity:.7;" id="batteryTextLive">バッテリー --%</div>
+              <div class="badge" id="connBadge2" aria-live="polite">
+                <span class="dot" aria-hidden="true"></span>
+                <span id="connText2">つながっている</span>
+              </div>
             </div>
           </div>
 
@@ -145,8 +151,8 @@
             <div class="date" id="matchLabel">9/5 vs ○○</div>
           </div>
 
-          <div class="chart">
-            <svg id="chartSvg" viewBox="0 0 360 360" width="100%" height="100%" preserveAspectRatio="none" aria-label="timeline chart"></svg>
+          <div class="chart" style="overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:16px;">
+            <svg id="chartSvg" viewBox="0 0 360 360" width="360" height="360" preserveAspectRatio="none" aria-label="timeline chart" style="display:block;"></svg>
           </div>
 
           <div class="tinyActions">
