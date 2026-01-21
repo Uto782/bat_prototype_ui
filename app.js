@@ -56,8 +56,9 @@ function showScreen(name){
 
   const navItems = Array.from(document.querySelectorAll('.navItem'))
   navItems.forEach((n) => n.classList.remove('active'))
-  if(name === 'home') navItems[0].classList.add('active')
-  if(name === 'history') navItems[1].classList.add('active')
+
+  const active = navItems.find((n) => n.getAttribute('data-target') === name)
+  if(active) active.classList.add('active')
 
   if(name === 'live'){
     el('backBtn').style.visibility = 'visible'
@@ -187,14 +188,6 @@ function syncDerivedFromLogsOnly(){
   state.tapCount = taps
   updateLive()
   el('totalTapCount').innerHTML = String(taps) + '<span class="countUnit">回</span>'
-
-  const c = state.logs.filter((x) => x.type === 'chance').length
-  const p = state.logs.filter((x) => x.type === 'pinch').length
-  const ch = document.getElementById('chanceHint')
-  const ph = document.getElementById('pinchHint')
-  if(ch) ch.textContent = String(c) + 'かい'
-  if(ph) ph.textContent = String(p) + 'かい'
-
   drawHistoryChart()
 }
 
@@ -251,8 +244,6 @@ function onTapNotify(e){
   if(delta <= 0) return
 
   const t = nowMs()
-
-  // ここが改善点：同時刻に固まらないように少しずつ時刻をずらす
   for(let i = 0; i < delta; i++){
     state.logs.push({ t: t + i * 20, type: 'tap' })
   }
@@ -339,9 +330,6 @@ async function sendCommand(cmd){
     const u8 = new Uint8Array([cmd & 0xff])
     await state.commandChar.writeValue(u8)
 
-    if(cmd === CMD.chance) addLog('chance')
-    if(cmd === CMD.pinch) addLog('pinch')
-
     if(cmd === CMD.chance) toast('チャンス')
     else if(cmd === CMD.pinch) toast('ピンチ')
     else toast('停止')
@@ -354,20 +342,21 @@ function svgEl(name){
   return document.createElementNS('http://www.w3.org/2000/svg', name)
 }
 
+// 1分刻みの集計＋1分ごとの目盛り
 function drawHistoryChart(){
   const svg = el('chartSvg')
   const W = 360
   const H = 360
-  const padL = 10
-  const padR = 10
+  const padL = 14
+  const padR = 12
   const padT = 34
-  const padB = 58
+  const padB = 62
 
   while(svg.firstChild) svg.removeChild(svg.firstChild)
 
   const taps = state.logs.filter((x) => x.type === 'tap')
   if(taps.length < 2){
-    drawEmptyChart(svg, W, H)
+    drawEmptyChart(svg, W, H, padL, padR, padT, padB)
     return
   }
 
@@ -375,13 +364,15 @@ function drawHistoryChart(){
   const t1 = taps[taps.length - 1].t
   const span = Math.max(1, t1 - t0)
 
-  const bins = 30
+  const minuteMs = 60000
+  let bins = Math.floor(span / minuteMs) + 1
+  if (bins < 2) bins = 2
+  if (bins > 120) bins = 120
+
   const counts = new Array(bins).fill(0)
 
   for(const ev of taps){
-    const ratio = (ev.t - t0) / span
-    const idxF = mul(ratio, bins)
-    const idx = Math.max(0, Math.min(bins - 1, Math.floor(idxF)))
+    const idx = Math.max(0, Math.min(bins - 1, Math.floor((ev.t - t0) / minuteMs)))
     counts[idx] = counts[idx] + 1
   }
 
@@ -396,8 +387,36 @@ function drawHistoryChart(){
   const yOf = (c) => {
     const r = c / maxC
     const h = (H - padT - padB)
-    const v = padT + mul((1 - r), h)
-    return v
+    return padT + mul((1 - r), h)
+  }
+
+  const yBase = H - padB
+
+  // 1分ごとの縦線とラベル
+  const tickEvery = 1
+  for(let i = 0; i < bins; i += tickEvery){
+    const x = xOf(i)
+
+    const grid = svgEl('line')
+    grid.setAttribute('x1', x.toFixed(2))
+    grid.setAttribute('x2', x.toFixed(2))
+    grid.setAttribute('y1', String(padT))
+    grid.setAttribute('y2', String(yBase))
+    grid.setAttribute('stroke', 'rgba(0,0,0,.06)')
+    grid.setAttribute('stroke-width', '2')
+    svg.appendChild(grid)
+
+    const label = svgEl('text')
+    label.setAttribute('x', x.toFixed(2))
+    label.setAttribute('y', String(H - 18))
+    label.setAttribute('text-anchor', i === 0 ? 'start' : (i === bins - 1 ? 'end' : 'middle'))
+    label.setAttribute('font-size', '12')
+    label.setAttribute('font-family', 'system-ui')
+    label.setAttribute('fill', 'rgba(40,46,60,.62)')
+    label.textContent = i === 0 ? '0分' : (String(i) + '分')
+    if (bins <= 12 || i % 2 === 0 || i === bins - 1) {
+      svg.appendChild(label)
+    }
   }
 
   let dLine = ''
@@ -409,11 +428,10 @@ function drawHistoryChart(){
 
   const x0 = xOf(0)
   const xN = xOf(bins - 1)
-  const yBase = H - padB
 
   const area = svgEl('path')
   area.setAttribute('d', dLine + 'L ' + xN.toFixed(2) + ' ' + String(yBase) + ' L ' + x0.toFixed(2) + ' ' + String(yBase) + ' Z')
-  area.setAttribute('fill', 'rgba(0,199,172,.28)')
+  area.setAttribute('fill', 'rgba(0,199,172,.24)')
   svg.appendChild(area)
 
   const line = svgEl('path')
@@ -429,10 +447,11 @@ function drawHistoryChart(){
   base.setAttribute('x2', String(W - padR))
   base.setAttribute('y1', String(yBase))
   base.setAttribute('y2', String(yBase))
-  base.setAttribute('stroke', 'rgba(0,0,0,.12)')
+  base.setAttribute('stroke', 'rgba(0,0,0,.14)')
   base.setAttribute('stroke-width', '2')
   svg.appendChild(base)
 
+  // chance/pinch のマーカーは引き続き上に出す
   const marks = state.logs.filter((x) => (x.type === 'chance' || x.type === 'pinch'))
   for(const m of marks){
     const ratio = (m.t - t0) / span
@@ -449,7 +468,7 @@ function drawHistoryChart(){
   }
 }
 
-function drawEmptyChart(svg, W, H){
+function drawEmptyChart(svg, W, H, padL, padR, padT, padB){
   const txt = svgEl('text')
   txt.setAttribute('x', String(W / 2))
   txt.setAttribute('y', String(H / 2))
@@ -461,13 +480,23 @@ function drawEmptyChart(svg, W, H){
   svg.appendChild(txt)
 
   const base = svgEl('line')
-  base.setAttribute('x1', '10')
-  base.setAttribute('x2', String(W - 10))
-  base.setAttribute('y1', String(H - 58))
-  base.setAttribute('y2', String(H - 58))
+  base.setAttribute('x1', String(padL))
+  base.setAttribute('x2', String(W - padR))
+  base.setAttribute('y1', String(H - padB))
+  base.setAttribute('y2', String(H - padB))
   base.setAttribute('stroke', 'rgba(0,0,0,.12)')
   base.setAttribute('stroke-width', '2')
   svg.appendChild(base)
+
+  const label = svgEl('text')
+  label.setAttribute('x', String(padL))
+  label.setAttribute('y', String(H - 18))
+  label.setAttribute('text-anchor', 'start')
+  label.setAttribute('font-size', '12')
+  label.setAttribute('font-family', 'system-ui')
+  label.setAttribute('fill', 'rgba(40,46,60,.62)')
+  label.textContent = '0分'
+  svg.appendChild(label)
 }
 
 function initNav(){
@@ -477,11 +506,9 @@ function initNav(){
       const t = item.getAttribute('data-target')
       if(t === 'home') showScreen('home')
       else if(t === 'history') showScreen('history')
-      else toast('みじっそう')
+      else toast('じゅんびちゅう')
     })
   })
-
-  el('navFab').addEventListener('click', () => showScreen('history'))
 }
 
 function init(){
