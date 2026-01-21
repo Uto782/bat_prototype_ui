@@ -411,50 +411,74 @@ function stopMarkerLoop(){
 
 function updateTimeMarker(){
   if(!chartRuntime) return
-  const c = chartRuntime.marker
-  if(!c) return
   const startT = chartRuntime.startT
   if(!startT) return
 
   const minuteMs = 60000
   const elapsedMin = Math.max(0, (nowMs() - startT) / minuteMs)
-  const x = chartRuntime.xOfMin(elapsedMin)
+  const xNow = chartRuntime.xOfMin(elapsedMin)
 
-  c.setAttribute('cx', x.toFixed(2))
-  c.setAttribute('cy', String(chartRuntime.yBase))
+  if(chartRuntime.marker){
+    chartRuntime.marker.setAttribute('cx', xNow.toFixed(2))
+    chartRuntime.marker.setAttribute('cy', String(chartRuntime.yHold))
+  }
+
+  if(chartRuntime.holdLine){
+    chartRuntime.holdLine.setAttribute('x2', xNow.toFixed(2))
+    chartRuntime.holdLine.setAttribute('y1', String(chartRuntime.yHold))
+    chartRuntime.holdLine.setAttribute('y2', String(chartRuntime.yHold))
+  }
 
   const meta = el('chartMeta')
   if(meta){
     meta.textContent = '開始0分 / いま' + String(Math.floor(elapsedMin)) + '分'
   }
 
-  const svg = el('chartSvg')
-  if(svg && chartRuntime.chartWrap){
+  if(chartRuntime.chartWrap){
     const wrap = chartRuntime.chartWrap
-    const rightEdge = x - wrap.clientWidth * 0.6
+    const rightEdge = xNow - wrap.clientWidth * 0.6
     if(rightEdge > wrap.scrollLeft){
       wrap.scrollLeft = rightEdge
     }
   }
 }
 
-// 横に伸びるスクロールグラフ（線は最後の叩打までで止める）
+function pickYTicks(maxC, yOf){
+  const ticks = []
+  ticks.push({ v: 0, y: yOf(0) })
+  ticks.push({ v: maxC, y: yOf(maxC) })
+
+  if(maxC >= 2){
+    const mid = Math.round(maxC / 2)
+    const yMid = yOf(mid)
+    const y0 = ticks[0].y
+    const yM = yMid
+    const yMax = ticks[1].y
+
+    const minGap = 22
+    if(Math.abs(y0 - yM) >= minGap && Math.abs(yM - yMax) >= minGap){
+      ticks.splice(1, 0, { v: mid, y: yMid })
+    }
+  }
+
+  return ticks
+}
+
 function drawHistoryChart(){
   const svg = el('chartSvg')
   const wrap = svg ? svg.parentElement : null
 
   const H = 360
-  const padL = 46
+  const padL = 52
   const padR = 14
   const padT = 28
   const padB = 62
   const yBase = H - padB
 
   while(svg.firstChild) svg.removeChild(svg.firstChild)
-
-  const startT = getStartTime()
   chartRuntime = null
 
+  const startT = getStartTime()
   if(!startT){
     const W0 = 360
     svg.setAttribute('width', String(W0))
@@ -481,11 +505,13 @@ function drawHistoryChart(){
   svg.setAttribute('viewBox', '0 0 ' + String(W) + ' ' + String(H))
 
   const taps = state.logs.filter((x) => x.type === 'tap')
+
   let lastTapIdx = -1
   for(const ev of taps){
     const idx = Math.floor((ev.t - startT) / minuteMs)
     if(idx > lastTapIdx) lastTapIdx = idx
   }
+
   let binsLine = Math.max(2, lastTapIdx + 1)
   if(binsLine > binsTime) binsLine = binsTime
 
@@ -496,6 +522,7 @@ function drawHistoryChart(){
   }
 
   const maxC = Math.max(1, ...counts)
+
   const xOf = (i) => padL + i * pxPerMin
   const xOfMin = (minF) => {
     const m = Math.max(0, Math.min(binsTime - 1, minF))
@@ -507,42 +534,11 @@ function drawHistoryChart(){
     return padT + mul((1 - r), h)
   }
 
-  // 縦軸ラベルと目盛り
-  const yTickVals = [0, Math.round(maxC / 2), maxC]
-  for(const v of yTickVals){
-    const yy = yOf(v)
-    const t = svgEl('text')
-    t.setAttribute('x', String(padL - 10))
-    t.setAttribute('y', String(yy + 4))
-    t.setAttribute('text-anchor', 'end')
-    t.setAttribute('font-size', '12')
-    t.setAttribute('font-family', 'system-ui')
-    t.setAttribute('fill', 'rgba(40,46,60,.62)')
-    t.textContent = String(v)
-    svg.appendChild(t)
+  // 横軸ラベルの間引き
+  const labelMinPx = 46
+  const labelEvery = Math.max(1, Math.ceil(labelMinPx / pxPerMin))
 
-    const hline = svgEl('line')
-    hline.setAttribute('x1', String(padL))
-    hline.setAttribute('x2', String(W - padR))
-    hline.setAttribute('y1', String(yy))
-    hline.setAttribute('y2', String(yy))
-    hline.setAttribute('stroke', 'rgba(0,0,0,.05)')
-    hline.setAttribute('stroke-width', '2')
-    svg.appendChild(hline)
-  }
-
-  const yLabel = svgEl('text')
-  yLabel.setAttribute('x', String(16))
-  yLabel.setAttribute('y', String(padT + 10))
-  yLabel.setAttribute('text-anchor', 'start')
-  yLabel.setAttribute('font-size', '12')
-  yLabel.setAttribute('font-family', 'system-ui')
-  yLabel.setAttribute('fill', 'rgba(40,46,60,.72)')
-  yLabel.textContent = '回'
-  svg.appendChild(yLabel)
-
-  // 1分ごとの縦線とラベル
-  const labelEvery = binsTime <= 12 ? 1 : (binsTime <= 40 ? 2 : 5)
+  // 目盛線
   for(let i = 0; i < binsTime; i++){
     const x = xOf(i)
 
@@ -568,7 +564,41 @@ function drawHistoryChart(){
     }
   }
 
-  // 線と面は binsLine まで
+  // 縦軸ラベル
+  const yLabel = svgEl('text')
+  yLabel.setAttribute('x', String(16))
+  yLabel.setAttribute('y', String(padT + 10))
+  yLabel.setAttribute('text-anchor', 'start')
+  yLabel.setAttribute('font-size', '12')
+  yLabel.setAttribute('font-family', 'system-ui')
+  yLabel.setAttribute('fill', 'rgba(40,46,60,.72)')
+  yLabel.textContent = '回'
+  svg.appendChild(yLabel)
+
+  // 縦軸目盛
+  const yTicks = pickYTicks(maxC, yOf)
+  for(const t of yTicks){
+    const hline = svgEl('line')
+    hline.setAttribute('x1', String(padL))
+    hline.setAttribute('x2', String(W - padR))
+    hline.setAttribute('y1', String(t.y))
+    hline.setAttribute('y2', String(t.y))
+    hline.setAttribute('stroke', 'rgba(0,0,0,.05)')
+    hline.setAttribute('stroke-width', '2')
+    svg.appendChild(hline)
+
+    const txt = svgEl('text')
+    txt.setAttribute('x', String(padL - 10))
+    txt.setAttribute('y', String(t.y + 4))
+    txt.setAttribute('text-anchor', 'end')
+    txt.setAttribute('font-size', '12')
+    txt.setAttribute('font-family', 'system-ui')
+    txt.setAttribute('fill', 'rgba(40,46,60,.62)')
+    txt.textContent = String(t.v)
+    svg.appendChild(txt)
+  }
+
+  // 線と面（最後の叩打まで）
   let dLine = ''
   for(let i = 0; i < binsLine; i++){
     const x = xOf(i)
@@ -617,10 +647,30 @@ function drawHistoryChart(){
     svg.appendChild(c)
   }
 
-  // 動く●（いま）
+  // 黒丸は常に先頭（いま）にいる
+  // 縦位置は「最後の叩打の高さ」を保持して、先に行っても落ちないようにする
+  let yHold = yBase
+  if(binsLine >= 2){
+    const last = counts[binsLine - 1]
+    yHold = yOf(last)
+  }else if(binsLine === 1){
+    yHold = yOf(counts[0])
+  }
+
+  // 先頭までの保持線（薄いガイド）
+  const holdLine = svgEl('line')
+  holdLine.setAttribute('x1', String(xN))
+  holdLine.setAttribute('x2', String(xN))
+  holdLine.setAttribute('y1', String(yHold))
+  holdLine.setAttribute('y2', String(yHold))
+  holdLine.setAttribute('stroke', 'rgba(40,46,60,.22)')
+  holdLine.setAttribute('stroke-width', '2')
+  holdLine.setAttribute('stroke-dasharray', '6 8')
+  svg.appendChild(holdLine)
+
   const marker = svgEl('circle')
-  marker.setAttribute('cx', String(xOf(0)))
-  marker.setAttribute('cy', String(yBase))
+  marker.setAttribute('cx', String(xN))
+  marker.setAttribute('cy', String(yHold))
   marker.setAttribute('r', '7')
   marker.setAttribute('fill', 'rgba(40,46,60,.88)')
   marker.setAttribute('stroke', 'rgba(255,255,255,.9)')
@@ -629,10 +679,11 @@ function drawHistoryChart(){
 
   chartRuntime = {
     startT,
-    yBase,
     marker,
+    holdLine,
     xOfMin,
-    chartWrap: wrap
+    chartWrap: wrap,
+    yHold
   }
 
   const meta = el('chartMeta')
